@@ -193,6 +193,15 @@ def update_weather():
     
     # 網格線設定
     plt.grid(axis='y', linestyle='--', alpha=0.5, color='#CCCCCC')
+
+    # 計算並強制設定 5 個 Y 軸刻度
+    min_temp = min(temps)
+    max_temp = max(temps)
+    if min_temp == max_temp:
+        min_temp -= 2
+        max_temp += 2
+    step = (max_temp - min_temp) / 4
+    y_ticks = [round(min_temp + step * i, 1) for i in range(5)]
     
     # 📌 [微調圖表字體大小] 調整 X 軸時間 (5PM, 8PM 等格式) 字體大小
     plt.xticks(ticks=x_indices, labels=times, fontsize=24, color=COLOR_PRIMARY)
