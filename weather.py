@@ -7,6 +7,9 @@ import io
 import matplotlib
 matplotlib.use('Agg') # 確保在無介面伺服器正常繪圖
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy.interpolate import make_interp_spline
+from matplotlib.ticker import FuncFormatter
 
 API_KEY = os.environ.get("OPENWEATHER_API_KEY")
 CITY = "Taipei, TW"
@@ -160,21 +163,46 @@ def update_weather():
     # ==========================================
     times = []
     temps = []
-    for item in fc['list'][:8]: 
+    for item in fc['list'][:8]: # 取未來 24 小時
         dt = datetime.utcfromtimestamp(item['dt']) + tz_offset
-        times.append(dt.strftime('%H:%M'))
+        # 將時間轉為 12 小時制 AM/PM，並去掉開頭的 0 (例如: 05PM -> 5PM)
+        time_str = dt.strftime('%I%p').lstrip('0')
+        times.append(time_str)
         temps.append(item['main']['temp'])
 
     # 📌 [微調尺寸] 圖表本身的長寬比例：寬12, 高7 (數字越大圖越大)
     plt.figure(figsize=(12, 7), dpi=100)
     
-    plt.plot(times, temps, marker='o', color=COLOR_CHART_LINE, linewidth=3, markersize=10, 
-             markeredgecolor=COLOR_CHART_LINE, markerfacecolor='white')
-    plt.fill_between(times, temps, min(temps)-2, color=COLOR_CHART_FILL, alpha=0.3)
+    # --- 開始平滑化曲線的計算 ---
+    # 因為 Matplotlib 預設是直線連接字串 X 軸，我們需先用數字索引 (0,1,2...) 來計算平滑曲線
+    x_indices = np.arange(len(times))
+    # 產生 300 個細密點來畫平滑曲線
+    x_smooth = np.linspace(x_indices.min(), x_indices.max(), 300) 
+    # 使用三次樣條插值 (Cubic Spline) 產生平滑的 Y 值
+    spline = make_interp_spline(x_indices, temps, k=3) 
+    y_smooth = spline(x_smooth)
+
+    # 畫平滑曲線的主線條 (zorder 決定圖層順序，數字越大越上層)
+    plt.plot(x_smooth, y_smooth, color=COLOR_CHART_LINE, linewidth=3, zorder=2)
+    
+    # 畫出每個時段原本的「資料點」(實心白底、圓框線)
+    plt.scatter(x_indices, temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
+    
+    # 填充平滑曲線下方的面積
+    plt.fill_between(x_smooth, y_smooth, min(y_smooth)-2, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
+    
+    # 網格線設定
     plt.grid(axis='y', linestyle='--', alpha=0.5, color='#CCCCCC')
-    plt.xticks(fontsize=14, color=COLOR_PRIMARY)
+    
+    # 📌 [微調圖表字體大小] 調整 X 軸時間 (5PM, 8PM 等格式) 字體大小
+    plt.xticks(ticks=x_indices, labels=times, fontsize=14, color=COLOR_PRIMARY)
+    
+    # 使用 FuncFormatter 為 Y 軸動態加上 °C 符號 (18°C, 20°C 等格式)
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
+    # 📌 [微調圖表字體大小] 調整 Y 軸溫度字體大小
     plt.yticks(fontsize=14, color=COLOR_PRIMARY)
     
+    # 移除圖表上下左右多餘的邊框
     ax = plt.gca()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -183,6 +211,7 @@ def update_weather():
     
     plt.tight_layout()
     
+    # 存入記憶體並貼到畫布
     buf = io.BytesIO()
     plt.savefig(buf, format='png', transparent=True)
     buf.seek(0)
