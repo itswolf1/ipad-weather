@@ -74,7 +74,7 @@ def update_weather():
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
     
     # 天氣描述/體感
-    draw.text((100, 260), f"體感 {feels_like}°C  |  {desc}", fill=COLOR_PRIMARY, font=font_large)
+    draw.text((100, 350), f"體感 {feels_like}°C  |  {desc}", fill=COLOR_PRIMARY, font=font_large)
     
     # 天氣圖示
     icon_img = get_icon(icon_code, size=4)
@@ -84,7 +84,7 @@ def update_weather():
 
     # --- 最上方頁眉 (Header)：所在地與日期 (右上) ---
     draw.text((1100, 80), "台北市, 台灣", fill=COLOR_PRIMARY, font=font_large)
-    draw.text((1100, 160), date_display, fill=COLOR_SECONDARY, font=font_medium)
+    draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
 
     # --- 五天預報分區 (中右下) ---
     # 移除了舊版中的預報標題
