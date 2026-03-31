@@ -195,12 +195,12 @@ def update_weather():
     plt.grid(axis='y', linestyle='--', alpha=0.5, color='#CCCCCC')
     
     # 📌 [微調圖表字體大小] 調整 X 軸時間 (5PM, 8PM 等格式) 字體大小
-    plt.xticks(ticks=x_indices, labels=times, fontsize=14, color=COLOR_PRIMARY)
+    plt.xticks(ticks=x_indices, labels=times, fontsize=50, color=COLOR_PRIMARY)
     
     # 使用 FuncFormatter 為 Y 軸動態加上 °C 符號 (18°C, 20°C 等格式)
     plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
     # 📌 [微調圖表字體大小] 調整 Y 軸溫度字體大小
-    plt.yticks(fontsize=14, color=COLOR_PRIMARY)
+    plt.yticks(fontsize=50, color=COLOR_PRIMARY)
     
     # 移除圖表上下左右多餘的邊框
     ax = plt.gca()
