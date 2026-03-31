@@ -118,8 +118,8 @@ def update_weather():
             # 📌 [微調位置] 預報小圖示 Y 座標 (X往左偏移20, Y=380)
             img.paste(f_icon, (x_offset - 20, 380), f_icon)
         
-        # 📌 [微調位置] 預報高低溫 Y 座標 (Y=550)
-        draw.text((x_offset, 550), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
+        # 📌 [微調位置] 預報高低溫 Y 座標 (Y=530)
+        draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
         
         # 📌 [微調位置] 每個預報欄位之間的間距 (增加 180)
         x_offset += 180
@@ -188,8 +188,8 @@ def update_weather():
     buf.seek(0)
     chart_img = Image.open(buf).convert("RGBA")
     
-    # 📌 [微調位置] 將整個圖表貼上的座標 (X=700, Y=600)
-    img.paste(chart_img, (700, 600), chart_img)
+    # 📌 [微調位置] 將整個圖表貼上的座標 (X=700, Y=650)
+    img.paste(chart_img, (700, 650), chart_img)
     plt.close()
 
     # ==========================================
