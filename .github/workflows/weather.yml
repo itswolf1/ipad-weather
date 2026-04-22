@@ -26,6 +26,7 @@ jobs:
       - name: Run script
         env:
           CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
         run: python weather.py 
 
       - name: Commit and Push
