@@ -166,3 +166,5 @@ def update_weather():
 
 if __name__ == "__main__":
     update_weather()
+img.save('weather.png')
+    print("圖片已成功存檔，完整路徑為:", os.path.abspath('weather.png'))
