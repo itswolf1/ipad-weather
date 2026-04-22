@@ -129,7 +129,8 @@ def update_weather():
         
         dt_str = temp_list[day_idx].get('DataTime', temp_list[day_idx].get('StartTime'))
         if not dt_str: continue
-        d_str = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').strftime('%m/%d')
+        # ⚠️ 更新：使用 fromisoformat 處理帶 T 與時區的字串
+        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
         
         val_list_temp = temp_list[day_idx].get('ElementValue', temp_list[day_idx].get('elementValue', []))
         d_temp = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '--')) if val_list_temp else '--'
@@ -157,7 +158,8 @@ def update_weather():
     for item in temp_list[:8]:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
-        dt = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
+        # ⚠️ 更新：使用 fromisoformat 處理帶 T 與時區的字串
+        dt = datetime.fromisoformat(dt_str)
         
         val_list_temp = item.get('ElementValue', item.get('elementValue', []))
         temp_val = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '0')) if val_list_temp else '0'
