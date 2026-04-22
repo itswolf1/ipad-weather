@@ -53,7 +53,6 @@ def update_weather():
         station_data = obs_data['records']['Station'][0]
         we = station_data.get('WeatherElement', {})
         
-        # 加入預設值避免報錯
         temp = round(float(we.get('AirTemperature', 0)))
         humidity = we.get('RelativeHumidity', 0)
         wind = we.get('WindSpeed', 0)
@@ -79,7 +78,7 @@ def update_weather():
         print(f"預報資料解析失敗: {e}")
         return
 
-    # 防呆取值函式 相容多種 CWA 欄位命名
+    # 防呆取值函式
     def find_weather_element(element_list, target_names):
         for e in element_list:
             name = e.get('ElementName', e.get('elementName'))
@@ -91,18 +90,20 @@ def update_weather():
     temp_list = find_weather_element(elements, ['T', '溫度', 'Temperature', 'MaxT'])
     desc_list = find_weather_element(elements, ['Wx', '天氣現象', 'WeatherCondition'])
     pop_list = find_weather_element(elements, ['PoP12h', '12小時降雨機率', 'PoP6h', 'PoP', '降雨機率'])
+    min_t_list = find_weather_element(elements, ['MinT', '最低溫度'])
+    max_t_list = find_weather_element(elements, ['MaxT', '最高溫度'])
 
     if not temp_list or not desc_list:
-        print(f"找不到對應的 ElementName 可用欄位有: {[e.get('ElementName', e.get('elementName')) for e in elements]}")
+        print(f"找不到對應的 ElementName")
         return
     
-    # 安全讀取 desc
+    # 讀取天氣描述
     current_desc = "未知"
     val_list_desc = desc_list[0].get('ElementValue', desc_list[0].get('elementValue', []))
     if val_list_desc:
         current_desc = val_list_desc[0].get('Weather', val_list_desc[0].get('value', val_list_desc[0].get('WeatherDescription', '未知')))
     
-    # 安全讀取 PoP
+    # 讀取降雨機率
     pop_value = "0"
     if pop_list:
         val_list_pop = pop_list[0].get('ElementValue', pop_list[0].get('elementValue', []))
@@ -121,23 +122,43 @@ def update_weather():
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
 
+    # 整理每日高低溫
+    daily_extremes = {}
+    
+    for item in min_t_list:
+        dt_str = item.get('DataTime', item.get('StartTime'))
+        if not dt_str: continue
+        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
+        val_list = item.get('ElementValue', item.get('elementValue', []))
+        val = val_list[0].get('Temperature', val_list[0].get('value')) if val_list else None
+        if val is not None:
+            if d_str not in daily_extremes: daily_extremes[d_str] = {'min': [], 'max': []}
+            daily_extremes[d_str]['min'].append(int(val))
+
+    for item in max_t_list:
+        dt_str = item.get('DataTime', item.get('StartTime'))
+        if not dt_str: continue
+        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
+        val_list = item.get('ElementValue', item.get('elementValue', []))
+        val = val_list[0].get('Temperature', val_list[0].get('value')) if val_list else None
+        if val is not None:
+            if d_str not in daily_extremes: daily_extremes[d_str] = {'min': [], 'max': []}
+            daily_extremes[d_str]['max'].append(int(val))
+
     # 五天預報區塊
     x_offset = 1000
-    for i in range(0, 5):
-        day_idx = i * 8 
-        if day_idx >= len(temp_list): break
+    count = 0
+    for d_str, extremes in daily_extremes.items():
+        if count >= 5: break
+        if not extremes['min'] or not extremes['max']: continue
         
-        dt_str = temp_list[day_idx].get('DataTime', temp_list[day_idx].get('StartTime'))
-        if not dt_str: continue
-        # ⚠️ 更新：使用 fromisoformat 處理帶 T 與時區的字串
-        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
-        
-        val_list_temp = temp_list[day_idx].get('ElementValue', temp_list[day_idx].get('elementValue', []))
-        d_temp = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '--')) if val_list_temp else '--'
+        low = min(extremes['min'])
+        high = max(extremes['max'])
         
         draw.text((x_offset, 310), d_str, fill=COLOR_SECONDARY, font=font_medium)
-        draw.text((x_offset, 530), f"{d_temp}°C", fill=COLOR_PRIMARY, font=font_small)
+        draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
         x_offset += 180
+        count += 1
 
     # 左下詳細指標區塊
     details = [
@@ -158,7 +179,6 @@ def update_weather():
     for item in temp_list[:8]:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
-        # ⚠️ 更新：使用 fromisoformat 處理帶 T 與時區的字串
         dt = datetime.fromisoformat(dt_str)
         
         val_list_temp = item.get('ElementValue', item.get('elementValue', []))
