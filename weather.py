@@ -11,10 +11,13 @@ import numpy as np
 from scipy.interpolate import make_interp_spline
 from matplotlib.ticker import FuncFormatter
 
-# 設定中央氣象署 API Key
+# 設定 API Keys
 CWA_API_KEY = os.environ.get("CWA_API_KEY")
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY") 
+
 CITY_NAME = "臺北市" 
 DISTRICT_NAME = "內湖區"
+OW_CITY = "Taipei, TW" # OpenWeather 使用的城市名稱
 
 # 莫蘭迪配色定義
 COLOR_BG = '#EAE7E1'      
@@ -40,7 +43,7 @@ def update_weather():
     img = Image.new('RGB', (2048, 1536), color=COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    # 1. 抓取當前天氣
+    # 1. 抓取當前天氣 (CWA)
     obs_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
     obs_params = {
         "Authorization": CWA_API_KEY,
@@ -61,7 +64,7 @@ def update_weather():
         print(f"觀測站資料抓取失敗: {e}")
         return
 
-    # 2. 抓取預報
+    # 2. 抓取預報 (CWA)
     fc_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-061"
     fc_params = {
         "Authorization": CWA_API_KEY,
@@ -77,6 +80,18 @@ def update_weather():
     except Exception as e:
         print(f"預報資料解析失敗: {e}")
         return
+
+    # 3. 抓取日出日落 (OpenWeather)
+    try:
+        ow_url = f"http://api.openweathermap.org/data/2.5/weather?q={OW_CITY}&appid={OPENWEATHER_API_KEY}"
+        ow_data = requests.get(ow_url).json()
+        tz_offset = timedelta(seconds=ow_data['timezone'])
+        sunrise = (datetime.utcfromtimestamp(ow_data['sys']['sunrise']) + tz_offset).strftime('%H:%M')
+        sunset = (datetime.utcfromtimestamp(ow_data['sys']['sunset']) + tz_offset).strftime('%H:%M')
+    except Exception as e:
+        print(f"OpenWeather 資料抓取失敗: {e}")
+        sunrise = "--:--"
+        sunset = "--:--"
 
     # 防呆取值函式
     def find_weather_element(element_list, target_names):
@@ -162,6 +177,8 @@ def update_weather():
 
     # 左下詳細指標區塊
     details = [
+        f"日出: {sunrise}", 
+        f"日落: {sunset}",
         f"風速: {wind} m/s",
         f"濕度: {humidity}%",
         f"氣壓: {pressure} hPa",
@@ -219,7 +236,7 @@ def update_weather():
 
     # Footer 區塊
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
-    draw.text((600, 1450), f"最後更新: {update_str} (CWA)", fill=COLOR_SECONDARY, font=font_small)
+    draw.text((600, 1450), f"最後更新: {update_str} (CWA & OW)", fill=COLOR_SECONDARY, font=font_small)
 
     img.save('weather.png')
     print("圖片已成功存檔並更新！")
