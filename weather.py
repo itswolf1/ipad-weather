@@ -166,5 +166,7 @@ def update_weather():
 
 if __name__ == "__main__":
     update_weather()
-img.save('weather.png')
-    print("圖片已成功存檔，完整路徑為:", os.path.abspath('weather.png'))
+    update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
+    draw.text((600, 1450), f"最後更新: {update_str} (CWA)", fill=COLOR_SECONDARY, font=font_small)
+    img.save('weather.png')
+    print("圖片已成功存檔，完整路徑為:", os.path.abspath('weather.png')) # ⬅️ 確保這行的開頭與 img.save 垂直對齊，不要多空一格
