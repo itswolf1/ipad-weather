@@ -29,14 +29,15 @@ COLOR_CHART_FILL = '#B4BCB1'
 def get_cwa_icon(weather_code):
     return None
 
-def get_icon(icon_code, size=2):
-    """從 OpenWeather 下載天氣圖示"""
-    url = f"http://openweathermap.org/img/wn/{icon_code}@{size}x.png"
-    try:
-        response = requests.get(url)
-        return Image.open(io.BytesIO(response.content)).convert("RGBA")
-    except:
-        return None
+def get_weather_emoji(desc):
+    """根據天氣描述回傳對應的 Emoji"""
+    if "雷" in desc: return "⛈️"
+    elif "雨" in desc: return "🌧️"
+    elif "晴" in desc and "雲" in desc: return "⛅"
+    elif "晴" in desc: return "☀️"
+    elif "陰" in desc: return "☁️"
+    elif "雲" in desc: return "☁️"
+    else: return "🌡️"
 
 def update_weather():
     font_path = "font.otf"
@@ -52,163 +53,170 @@ def update_weather():
     img = Image.new('RGB', (2048, 1536), color=COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    # ==========================================
-    # 1. 抓取當前天氣與預報 (CWA 氣象署)
-    # ==========================================
+    # 1. 抓取當前天氣 (CWA)
     obs_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
-    obs_params = {"Authorization": CWA_API_KEY, "StationId": "466920", "format": "JSON"}
-    
-    fc_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-061"
-    fc_params = {"Authorization": CWA_API_KEY, "format": "JSON"}
+    obs_params = {
+        "Authorization": CWA_API_KEY,
+        "StationId": "466920", 
+        "format": "JSON"
+    }
     
     try:
         obs_data = requests.get(obs_url, params=obs_params).json()
-        we = obs_data['records']['Station'][0].get('WeatherElement', {})
+        station_data = obs_data['records']['Station'][0]
+        we = station_data.get('WeatherElement', {})
+        
         temp = round(float(we.get('AirTemperature', 0)))
         humidity = we.get('RelativeHumidity', 0)
         wind = we.get('WindSpeed', 0)
         pressure = we.get('AirPressure', 0)
+    except Exception as e:
+        print(f"觀測站資料抓取失敗: {e}")
+        return
 
+    # 2. 抓取預報 (CWA)
+    fc_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-061"
+    fc_params = {
+        "Authorization": CWA_API_KEY,
+        "format": "JSON"
+    }
+    
+    try:
         fc_data = requests.get(fc_url, params=fc_params).json()
         locations_list = fc_data['records']['Locations'][0]['Location']
+        
         fc_res = next((loc for loc in locations_list if loc.get('LocationName') == DISTRICT_NAME), locations_list[0])
         elements = fc_res.get('WeatherElement', [])
     except Exception as e:
-        print(f"CWA 資料抓取失敗: {e}")
+        print(f"預報資料解析失敗: {e}")
         return
 
-    # ==========================================
-    # 2. 抓取圖示與日出日落 (OpenWeather)
-    # ==========================================
-    ow_icons = {}
-    cur_icon_code = None
-    sunrise, sunset = "--:--", "--:--"
+    # 3. 抓取日出日落 (OpenWeather)
     try:
-        # 當前天氣 (取日出落與當前圖示)
-        ow_cur_url = f"http://api.openweathermap.org/data/2.5/weather?q={OW_CITY}&appid={OPENWEATHER_API_KEY}"
-        ow_cur = requests.get(ow_cur_url).json()
-        tz_offset = timedelta(seconds=ow_cur['timezone'])
-        sunrise = (datetime.utcfromtimestamp(ow_cur['sys']['sunrise']) + tz_offset).strftime('%H:%M')
-        sunset = (datetime.utcfromtimestamp(ow_cur['sys']['sunset']) + tz_offset).strftime('%H:%M')
-        cur_icon_code = ow_cur['weather'][0]['icon']
-
-        # 預報天氣 (取未來五天圖示)
-        ow_fc_url = f"http://api.openweathermap.org/data/2.5/forecast?q={OW_CITY}&appid={OPENWEATHER_API_KEY}"
-        ow_fc = requests.get(ow_fc_url).json()
-        
-        for item in ow_fc['list']:
-            dt = datetime.utcfromtimestamp(item['dt']) + tz_offset
-            d_str = dt.strftime('%m/%d')
-            icon = item['weather'][0]['icon']
-            # 優先保留白天 ('d') 的圖示
-            if d_str not in ow_icons:
-                ow_icons[d_str] = icon
-            elif 'd' in icon and 'n' in ow_icons[d_str]: 
-                ow_icons[d_str] = icon
+        ow_url = f"http://api.openweathermap.org/data/2.5/weather?q={OW_CITY}&appid={OPENWEATHER_API_KEY}"
+        ow_data = requests.get(ow_url).json()
+        tz_offset = timedelta(seconds=ow_data['timezone'])
+        sunrise = (datetime.utcfromtimestamp(ow_data['sys']['sunrise']) + tz_offset).strftime('%H:%M')
+        sunset = (datetime.utcfromtimestamp(ow_data['sys']['sunset']) + tz_offset).strftime('%H:%M')
     except Exception as e:
         print(f"OpenWeather 資料抓取失敗: {e}")
+        sunrise = "未知"
+        sunset = "未知"
 
-    # ==========================================
-    # 3. 解析 CWA 預報資料
-    # ==========================================
+    # 防呆取值函式
     def find_weather_element(element_list, target_names):
         for e in element_list:
-            if e.get('ElementName', e.get('elementName')) in target_names:
+            name = e.get('ElementName', e.get('elementName'))
+            if name in target_names:
                 return e.get('Time', e.get('time', []))
         return []
 
+    # 解析預報資料
     temp_list = find_weather_element(elements, ['T', '溫度', 'Temperature', 'MaxT'])
     desc_list = find_weather_element(elements, ['Wx', '天氣現象', 'WeatherCondition'])
     pop_list = find_weather_element(elements, ['PoP12h', '12小時降雨機率', 'PoP6h', 'PoP', '降雨機率'])
 
-    if not temp_list or not desc_list: return
+    if not temp_list or not desc_list:
+        print(f"找不到對應的 ElementName")
+        return
     
+    # 讀取天氣描述
     current_desc = "未知"
     val_list_desc = desc_list[0].get('ElementValue', desc_list[0].get('elementValue', []))
     if val_list_desc:
-        current_desc = val_list_desc[0].get('Weather', val_list_desc[0].get('value', '未知'))
+        current_desc = val_list_desc[0].get('Weather', val_list_desc[0].get('value', val_list_desc[0].get('WeatherDescription', '未知')))
     
+    # 讀取降雨機率
     pop_value = "0"
     if pop_list:
         val_list_pop = pop_list[0].get('ElementValue', pop_list[0].get('elementValue', []))
         if val_list_pop:
             pop_value = val_list_pop[0].get('ProbabilityOfPrecipitation', val_list_pop[0].get('value', '0'))
-            if not str(pop_value).strip(): pop_value = "0"
+            if not str(pop_value).strip():
+                pop_value = "0"
     
     local_time = datetime.now()
     weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
     date_display = f"{local_time.strftime('%Y年%m月%d日')} {weekdays[int(local_time.strftime('%w'))]}"
 
+    # Header 區塊
+    current_emoji = get_weather_emoji(current_desc)
+    draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
+    draw.text((100, 350), f"濕度 {humidity}%  |  {current_emoji} {current_desc}", fill=COLOR_PRIMARY, font=font_large)
+    draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
+    draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
+
+    # 重新整理每日高低溫與天氣狀況
     daily_data = {}
     for item in temp_list:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
-        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
+        dt = datetime.fromisoformat(dt_str)
+        d_str = dt.strftime('%m/%d')
+
         val_list = item.get('ElementValue', item.get('elementValue', []))
         val = val_list[0].get('Temperature', val_list[0].get('value')) if val_list else None
+        
         if val is not None:
-            if d_str not in daily_data: daily_data[d_str] = []
-            daily_data[d_str].append(int(val))
+            if d_str not in daily_data:
+                daily_data[d_str] = {'temps': [], 'desc': '未知'}
+            daily_data[d_str]['temps'].append(int(val))
 
-    # ==========================================
-    # 4. 繪製區塊
-    # ==========================================
-    # --- Header (當前天氣與圖示) ---
-    draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
-    draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
-    draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
-    draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
+    for item in desc_list:
+        dt_str = item.get('DataTime', item.get('StartTime'))
+        if not dt_str: continue
+        dt = datetime.fromisoformat(dt_str)
+        d_str = dt.strftime('%m/%d')
+        
+        val_list = item.get('ElementValue', item.get('elementValue', []))
+        desc = val_list[0].get('Weather', val_list[0].get('value', '未知')) if val_list else '未知'
+        
+        if d_str in daily_data and daily_data[d_str]['desc'] == '未知':
+            daily_data[d_str]['desc'] = desc
 
-    if cur_icon_code:
-        icon_img = get_icon(cur_icon_code, size=4)
-        if icon_img:
-            icon_img = icon_img.resize((300, 300))
-            img.paste(icon_img, (500, 80), icon_img) # 第三個參數是 Alpha 遮罩
-
-    # --- 五天預報 (含圖示) ---
+    # 預報區塊 
     x_offset = 1000
     count = 0
-    for d_str, temps in daily_data.items():
+    for d_str, data in daily_data.items():
         if count >= 5: break
-        if not temps: continue
+        if not data['temps']: continue
         
-        low = min(temps)
-        high = max(temps)
+        low = min(data['temps'])
+        high = max(data['temps'])
+        emoji = get_weather_emoji(data['desc'])
         
         draw.text((x_offset, 310), d_str, fill=COLOR_SECONDARY, font=font_medium)
-        
-        # 貼上 OpenWeather 預報圖示
-        f_icon_code = ow_icons.get(d_str)
-        if f_icon_code:
-            f_icon = get_icon(f_icon_code, size=2)
-            if f_icon:
-                f_icon = f_icon.resize((150, 150))
-                img.paste(f_icon, (x_offset - 20, 370), f_icon)
-                
+        draw.text((x_offset, 420), emoji, fill=COLOR_PRIMARY, font=font_large)
         draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
         x_offset += 180
         count += 1
 
-    # --- 左下詳細指標 ---
+    # 左下詳細指標區塊
     details = [
-        f"日出: {sunrise}", f"日落: {sunset}",
-        f"風速: {wind} m/s", f"濕度: {humidity}%",
-        f"氣壓: {pressure} hPa", f"降雨機率: {pop_value}%"
+        f"日出: {sunrise}", 
+        f"日落: {sunset}",
+        f"風速: {wind} m/s",
+        f"濕度: {humidity}%",
+        f"氣壓: {pressure} hPa",
+        f"降雨機率: {pop_value}%"
     ]
+    
     y_offset = 600
     for text in details:
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-    # --- 右下趨勢圖 ---
+    # 右下趨勢圖區塊
     chart_times = []
     chart_temps = []
     for item in temp_list[:8]:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
         dt = datetime.fromisoformat(dt_str)
+        
         val_list_temp = item.get('ElementValue', item.get('elementValue', []))
         temp_val = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '0')) if val_list_temp else '0'
+        
         try:
             chart_temps.append(float(temp_val))
             chart_times.append(dt.strftime('%I%p').lstrip('0'))
@@ -233,6 +241,7 @@ def update_weather():
         
         ax = plt.gca()
         for spine in ['top', 'right']: ax.spines[spine].set_visible(False)
+        
         plt.tight_layout()
         buf = io.BytesIO()
         plt.savefig(buf, format='png', transparent=True)
@@ -241,7 +250,7 @@ def update_weather():
         img.paste(chart_img, (700, 650), chart_img)
         plt.close()
 
-    # --- Footer ---
+    # Footer 區塊
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
     draw.text((600, 1450), f"最後更新: {update_str} (CWA & OW)", fill=COLOR_SECONDARY, font=font_small)
 
