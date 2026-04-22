@@ -29,6 +29,16 @@ COLOR_CHART_FILL = '#B4BCB1'
 def get_cwa_icon(weather_code):
     return None
 
+def get_weather_emoji(desc):
+    """根據天氣描述回傳對應的 Emoji"""
+    if "雷" in desc: return "⛈️"
+    elif "雨" in desc: return "🌧️"
+    elif "晴" in desc and "雲" in desc: return "⛅"
+    elif "晴" in desc: return "☀️"
+    elif "陰" in desc: return "☁️"
+    elif "雲" in desc: return "☁️"
+    else: return "🌡️"
+
 def update_weather():
     font_path = "font.otf"
     if not os.path.exists(font_path):
@@ -130,8 +140,9 @@ def update_weather():
     date_display = f"{local_time.strftime('%Y年%m月%d日')} {weekdays[int(local_time.strftime('%w'))]}"
 
     # Header 區塊
+    current_emoji = get_weather_emoji(current_desc)
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
-    draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
+    draw.text((100, 350), f"濕度 {humidity}%  |  {current_emoji} {current_desc}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
 
@@ -172,16 +183,10 @@ def update_weather():
         
         low = min(data['temps'])
         high = max(data['temps'])
-        
-        desc_text = data['desc']
-        if len(desc_text) > 2:
-            if "雨" in desc_text: desc_text = "雨"
-            elif "雲" in desc_text: desc_text = "多雲"
-            elif "晴" in desc_text: desc_text = "晴"
-            else: desc_text = desc_text[:2]
+        emoji = get_weather_emoji(data['desc'])
         
         draw.text((x_offset, 310), d_str, fill=COLOR_SECONDARY, font=font_medium)
-        draw.text((x_offset, 420), desc_text, fill=COLOR_PRIMARY, font=font_small)
+        draw.text((x_offset, 420), emoji, fill=COLOR_PRIMARY, font=font_large)
         draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
         x_offset += 180
         count += 1
