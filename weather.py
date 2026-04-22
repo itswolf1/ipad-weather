@@ -40,7 +40,7 @@ def update_weather():
     img = Image.new('RGB', (2048, 1536), color=COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    # 1. 抓取當前天氣 (使用臺北主測站 466920 作為當下觀測代表)
+    # 1. 抓取當前天氣
     obs_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
     obs_params = {
         "Authorization": CWA_API_KEY,
@@ -51,15 +51,18 @@ def update_weather():
     try:
         obs_data = requests.get(obs_url, params=obs_params).json()
         station_data = obs_data['records']['Station'][0]
-        temp = round(float(station_data['WeatherElement']['AirTemperature']))
-        humidity = station_data['WeatherElement']['RelativeHumidity']
-        wind = station_data['WeatherElement']['WindSpeed']
-        pressure = station_data['WeatherElement']['AirPressure']
+        we = station_data.get('WeatherElement', {})
+        
+        # 加入預設值避免報錯
+        temp = round(float(we.get('AirTemperature', 0)))
+        humidity = we.get('RelativeHumidity', 0)
+        wind = we.get('WindSpeed', 0)
+        pressure = we.get('AirPressure', 0)
     except Exception as e:
         print(f"觀測站資料抓取失敗: {e}")
         return
 
-    # 2. 抓取預報 (F-D0047-061 包含臺北市所有行政區)
+    # 2. 抓取預報
     fc_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-061"
     fc_params = {
         "Authorization": CWA_API_KEY,
@@ -70,24 +73,43 @@ def update_weather():
         fc_data = requests.get(fc_url, params=fc_params).json()
         locations_list = fc_data['records']['Locations'][0]['Location']
         
-        # 尋找內湖區的資料，若防呆找不到則預設抓第一筆
-        fc_res = next((loc for loc in locations_list if loc['LocationName'] == DISTRICT_NAME), locations_list[0])
-        
-    except (KeyError, IndexError) as e:
+        fc_res = next((loc for loc in locations_list if loc.get('LocationName') == DISTRICT_NAME), locations_list[0])
+        elements = fc_res.get('WeatherElement', [])
+    except Exception as e:
         print(f"預報資料解析失敗: {e}")
         return
 
-    elements = fc_res['WeatherElement']
+    # 防呆取值函式 相容多種 CWA 欄位命名
+    def find_weather_element(element_list, target_names):
+        for e in element_list:
+            name = e.get('ElementName', e.get('elementName'))
+            if name in target_names:
+                return e.get('Time', e.get('time', []))
+        return []
 
     # 解析預報資料
-    temp_list = next(e for e in elements if e['ElementName'] == 'T')['Time']
-    desc_list = next(e for e in elements if e['ElementName'] == 'Wx')['Time']
-    pop_list = next(e for e in elements if e['ElementName'] == 'PoP12h')['Time']
+    temp_list = find_weather_element(elements, ['T', '溫度', 'Temperature', 'MaxT'])
+    desc_list = find_weather_element(elements, ['Wx', '天氣現象', 'WeatherCondition'])
+    pop_list = find_weather_element(elements, ['PoP12h', '12小時降雨機率', 'PoP6h', 'PoP', '降雨機率'])
+
+    if not temp_list or not desc_list:
+        print(f"找不到對應的 ElementName 可用欄位有: {[e.get('ElementName', e.get('elementName')) for e in elements]}")
+        return
     
-    current_desc = desc_list[0]['ElementValue'][0]['Weather']
-    pop_value = pop_list[0]['ElementValue'][0]['ProbabilityOfPrecipitation']
-    if pop_value.strip() == "":
-        pop_value = "0"
+    # 安全讀取 desc
+    current_desc = "未知"
+    val_list_desc = desc_list[0].get('ElementValue', desc_list[0].get('elementValue', []))
+    if val_list_desc:
+        current_desc = val_list_desc[0].get('Weather', val_list_desc[0].get('value', val_list_desc[0].get('WeatherDescription', '未知')))
+    
+    # 安全讀取 PoP
+    pop_value = "0"
+    if pop_list:
+        val_list_pop = pop_list[0].get('ElementValue', pop_list[0].get('elementValue', []))
+        if val_list_pop:
+            pop_value = val_list_pop[0].get('ProbabilityOfPrecipitation', val_list_pop[0].get('value', '0'))
+            if not str(pop_value).strip():
+                pop_value = "0"
     
     local_time = datetime.now()
     weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
@@ -96,7 +118,6 @@ def update_weather():
     # Header 區塊
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
     draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
-    # 更新右上角顯示文字為「臺北市 內湖區」
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
 
@@ -107,8 +128,11 @@ def update_weather():
         if day_idx >= len(temp_list): break
         
         dt_str = temp_list[day_idx].get('DataTime', temp_list[day_idx].get('StartTime'))
+        if not dt_str: continue
         d_str = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').strftime('%m/%d')
-        d_temp = temp_list[day_idx]['ElementValue'][0]['Temperature']
+        
+        val_list_temp = temp_list[day_idx].get('ElementValue', temp_list[day_idx].get('elementValue', []))
+        d_temp = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '--')) if val_list_temp else '--'
         
         draw.text((x_offset, 310), d_str, fill=COLOR_SECONDARY, font=font_medium)
         draw.text((x_offset, 530), f"{d_temp}°C", fill=COLOR_PRIMARY, font=font_small)
@@ -132,35 +156,44 @@ def update_weather():
     chart_temps = []
     for item in temp_list[:8]:
         dt_str = item.get('DataTime', item.get('StartTime'))
+        if not dt_str: continue
         dt = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
-        chart_times.append(dt.strftime('%I%p').lstrip('0'))
-        chart_temps.append(float(item['ElementValue'][0]['Temperature']))
+        
+        val_list_temp = item.get('ElementValue', item.get('elementValue', []))
+        temp_val = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '0')) if val_list_temp else '0'
+        
+        try:
+            chart_temps.append(float(temp_val))
+            chart_times.append(dt.strftime('%I%p').lstrip('0'))
+        except ValueError:
+            continue
 
-    plt.figure(figsize=(12, 7), dpi=100)
-    x_indices = np.arange(len(chart_times))
-    x_smooth = np.linspace(x_indices.min(), x_indices.max(), 300)
-    spline = make_interp_spline(x_indices, chart_temps, k=3)
-    y_smooth = spline(x_smooth)
+    if chart_temps:
+        plt.figure(figsize=(12, 7), dpi=100)
+        x_indices = np.arange(len(chart_times))
+        x_smooth = np.linspace(x_indices.min(), x_indices.max(), 300)
+        spline = make_interp_spline(x_indices, chart_temps, k=3)
+        y_smooth = spline(x_smooth)
 
-    plt.plot(x_smooth, y_smooth, color=COLOR_CHART_LINE, linewidth=3, zorder=2)
-    plt.scatter(x_indices, chart_temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
-    plt.fill_between(x_smooth, y_smooth, min(y_smooth)-2, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
-    plt.grid(axis='y', linestyle='--', alpha=0.5, color='#CCCCCC')
-    
-    plt.xticks(ticks=x_indices, labels=chart_times, fontsize=24, color=COLOR_PRIMARY)
-    plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
-    plt.yticks(fontsize=24, color=COLOR_PRIMARY)
-    
-    ax = plt.gca()
-    for spine in ['top', 'right']: ax.spines[spine].set_visible(False)
-    
-    plt.tight_layout()
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', transparent=True)
-    buf.seek(0)
-    chart_img = Image.open(buf).convert("RGBA")
-    img.paste(chart_img, (700, 650), chart_img)
-    plt.close()
+        plt.plot(x_smooth, y_smooth, color=COLOR_CHART_LINE, linewidth=3, zorder=2)
+        plt.scatter(x_indices, chart_temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
+        plt.fill_between(x_smooth, y_smooth, min(y_smooth)-2, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
+        plt.grid(axis='y', linestyle='--', alpha=0.5, color='#CCCCCC')
+        
+        plt.xticks(ticks=x_indices, labels=chart_times, fontsize=24, color=COLOR_PRIMARY)
+        plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
+        plt.yticks(fontsize=24, color=COLOR_PRIMARY)
+        
+        ax = plt.gca()
+        for spine in ['top', 'right']: ax.spines[spine].set_visible(False)
+        
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', transparent=True)
+        buf.seek(0)
+        chart_img = Image.open(buf).convert("RGBA")
+        img.paste(chart_img, (700, 650), chart_img)
+        plt.close()
 
     # Footer 區塊
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
