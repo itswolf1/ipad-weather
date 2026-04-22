@@ -13,7 +13,8 @@ from matplotlib.ticker import FuncFormatter
 
 # 設定中央氣象署 API Key
 CWA_API_KEY = os.environ.get("CWA_API_KEY")
-CITY_NAME = "臺北市" # 注意需使用「臺」
+CITY_NAME = "臺北市" 
+DISTRICT_NAME = "內湖區"
 
 # 莫蘭迪配色定義
 COLOR_BG = '#EAE7E1'      
@@ -39,11 +40,11 @@ def update_weather():
     img = Image.new('RGB', (2048, 1536), color=COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    # 1. 抓取當前天氣
+    # 1. 抓取當前天氣 (使用臺北主測站 466920 作為當下觀測代表)
     obs_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
     obs_params = {
         "Authorization": CWA_API_KEY,
-        "StationId": "466920", # 臺北測站
+        "StationId": "466920", 
         "format": "JSON"
     }
     
@@ -58,19 +59,22 @@ def update_weather():
         print(f"觀測站資料抓取失敗: {e}")
         return
 
-    # 2. 抓取預報
+    # 2. 抓取預報 (F-D0047-061 包含臺北市所有行政區)
     fc_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-061"
     fc_params = {
         "Authorization": CWA_API_KEY,
-        "LocationName": CITY_NAME,
         "format": "JSON"
     }
     
     try:
         fc_data = requests.get(fc_url, params=fc_params).json()
-        fc_res = fc_data['records']['Locations'][0]['Location'][0]
+        locations_list = fc_data['records']['Locations'][0]['Location']
+        
+        # 尋找內湖區的資料，若防呆找不到則預設抓第一筆
+        fc_res = next((loc for loc in locations_list if loc['LocationName'] == DISTRICT_NAME), locations_list[0])
+        
     except (KeyError, IndexError) as e:
-        print(f"預報資料解析失敗，請確認 API Key 與 LocationName: {e}")
+        print(f"預報資料解析失敗: {e}")
         return
 
     elements = fc_res['WeatherElement']
@@ -89,19 +93,19 @@ def update_weather():
     weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
     date_display = f"{local_time.strftime('%Y年%m月%d日')} {weekdays[int(local_time.strftime('%w'))]}"
 
-    # Header
+    # Header 區塊
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
     draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
-    draw.text((1100, 80), f"{CITY_NAME}, 台灣", fill=COLOR_PRIMARY, font=font_large)
+    # 更新右上角顯示文字為「臺北市 內湖區」
+    draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
 
-    # 五天預報
+    # 五天預報區塊
     x_offset = 1000
     for i in range(0, 5):
         day_idx = i * 8 
         if day_idx >= len(temp_list): break
         
-        # 兼容 DataTime 與 StartTime 欄位差異
         dt_str = temp_list[day_idx].get('DataTime', temp_list[day_idx].get('StartTime'))
         d_str = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').strftime('%m/%d')
         d_temp = temp_list[day_idx]['ElementValue'][0]['Temperature']
@@ -110,7 +114,7 @@ def update_weather():
         draw.text((x_offset, 530), f"{d_temp}°C", fill=COLOR_PRIMARY, font=font_small)
         x_offset += 180
 
-    # 左下詳細指標
+    # 左下詳細指標區塊
     details = [
         f"風速: {wind} m/s",
         f"濕度: {humidity}%",
@@ -123,7 +127,7 @@ def update_weather():
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-    # 右下趨勢圖
+    # 右下趨勢圖區塊
     chart_times = []
     chart_temps = []
     for item in temp_list[:8]:
@@ -158,15 +162,12 @@ def update_weather():
     img.paste(chart_img, (700, 650), chart_img)
     plt.close()
 
-    # Footer
+    # Footer 區塊
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
     draw.text((600, 1450), f"最後更新: {update_str} (CWA)", fill=COLOR_SECONDARY, font=font_small)
 
     img.save('weather.png')
+    print("圖片已成功存檔並更新！")
 
 if __name__ == "__main__":
     update_weather()
-    update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
-    draw.text((600, 1450), f"最後更新: {update_str} (CWA)", fill=COLOR_SECONDARY, font=font_small)
-    img.save('weather.png')
-    print("圖片已成功存檔，完整路徑為:", os.path.abspath('weather.png')) # ⬅️ 確保這行的開頭與 img.save 垂直對齊，不要多空一格
