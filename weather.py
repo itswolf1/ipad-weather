@@ -17,7 +17,7 @@ OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY")
 
 CITY_NAME = "臺北市" 
 DISTRICT_NAME = "內湖區"
-OW_CITY = "Taipei, TW" # OpenWeather 使用的城市名稱
+OW_CITY = "Taipei, TW" 
 
 # 莫蘭迪配色定義
 COLOR_BG = '#EAE7E1'      
@@ -90,8 +90,8 @@ def update_weather():
         sunset = (datetime.utcfromtimestamp(ow_data['sys']['sunset']) + tz_offset).strftime('%H:%M')
     except Exception as e:
         print(f"OpenWeather 資料抓取失敗: {e}")
-        sunrise = "--:--"
-        sunset = "--:--"
+        sunrise = "未知"
+        sunset = "未知"
 
     # 防呆取值函式
     def find_weather_element(element_list, target_names):
@@ -105,8 +105,6 @@ def update_weather():
     temp_list = find_weather_element(elements, ['T', '溫度', 'Temperature', 'MaxT'])
     desc_list = find_weather_element(elements, ['Wx', '天氣現象', 'WeatherCondition'])
     pop_list = find_weather_element(elements, ['PoP12h', '12小時降雨機率', 'PoP6h', 'PoP', '降雨機率'])
-    min_t_list = find_weather_element(elements, ['MinT', '最低溫度'])
-    max_t_list = find_weather_element(elements, ['MaxT', '最高溫度'])
 
     if not temp_list or not desc_list:
         print(f"找不到對應的 ElementName")
@@ -137,40 +135,53 @@ def update_weather():
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 190), date_display, fill=COLOR_SECONDARY, font=font_medium)
 
-    # 整理每日高低溫
-    daily_extremes = {}
-    
-    for item in min_t_list:
+    # 重新整理每日高低溫與天氣狀況
+    daily_data = {}
+    for item in temp_list:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
-        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
+        dt = datetime.fromisoformat(dt_str)
+        d_str = dt.strftime('%m/%d')
+
         val_list = item.get('ElementValue', item.get('elementValue', []))
         val = val_list[0].get('Temperature', val_list[0].get('value')) if val_list else None
+        
         if val is not None:
-            if d_str not in daily_extremes: daily_extremes[d_str] = {'min': [], 'max': []}
-            daily_extremes[d_str]['min'].append(int(val))
+            if d_str not in daily_data:
+                daily_data[d_str] = {'temps': [], 'desc': '未知'}
+            daily_data[d_str]['temps'].append(int(val))
 
-    for item in max_t_list:
+    for item in desc_list:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
-        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
+        dt = datetime.fromisoformat(dt_str)
+        d_str = dt.strftime('%m/%d')
+        
         val_list = item.get('ElementValue', item.get('elementValue', []))
-        val = val_list[0].get('Temperature', val_list[0].get('value')) if val_list else None
-        if val is not None:
-            if d_str not in daily_extremes: daily_extremes[d_str] = {'min': [], 'max': []}
-            daily_extremes[d_str]['max'].append(int(val))
+        desc = val_list[0].get('Weather', val_list[0].get('value', '未知')) if val_list else '未知'
+        
+        if d_str in daily_data and daily_data[d_str]['desc'] == '未知':
+            daily_data[d_str]['desc'] = desc
 
-    # 五天預報區塊
+    # 預報區塊 
     x_offset = 1000
     count = 0
-    for d_str, extremes in daily_extremes.items():
+    for d_str, data in daily_data.items():
         if count >= 5: break
-        if not extremes['min'] or not extremes['max']: continue
+        if not data['temps']: continue
         
-        low = min(extremes['min'])
-        high = max(extremes['max'])
+        low = min(data['temps'])
+        high = max(data['temps'])
+        
+        desc_text = data['desc']
+        if len(desc_text) > 2:
+            if "雨" in desc_text: desc_text = "雨"
+            elif "雲" in desc_text: desc_text = "多雲"
+            elif "晴" in desc_text: desc_text = "晴"
+            else: desc_text = desc_text[:2]
         
         draw.text((x_offset, 310), d_str, fill=COLOR_SECONDARY, font=font_medium)
+        draw.text((x_offset, 420), desc_text, fill=COLOR_PRIMARY, font=font_small)
         draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
         x_offset += 180
         count += 1
