@@ -145,18 +145,27 @@ def update_weather():
     # 右下趨勢圖 (24小時預報，每3小時一格)
     chart_times = []
     chart_temps = []
-    # 取前 8 筆資料，剛好涵蓋未來 24 小時
-    for item in temp_list[:8]:
+    last_dt = None
+
+    for item in temp_list:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
         dt = datetime.fromisoformat(dt_str)
-        val_list_temp = item.get('ElementValue', item.get('elementValue', []))
-        temp_val = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '0')) if val_list_temp else '0'
-        try:
-            chart_temps.append(float(temp_val))
-            chart_times.append(dt.strftime('%H:%M'))
-        except ValueError:
-            continue
+        
+        # 若為第一筆，或與上一筆時間相差大於等於 3 小時 (10800 秒) 才紀錄
+        if last_dt is None or (dt - last_dt).total_seconds() >= 10800:
+            val_list_temp = item.get('ElementValue', item.get('elementValue', []))
+            temp_val = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '0')) if val_list_temp else '0'
+            try:
+                chart_temps.append(float(temp_val))
+                chart_times.append(dt.strftime('%H:%M'))
+                last_dt = dt
+            except ValueError:
+                continue
+                
+        # 抓滿 8 筆 (共 24 小時) 即可停止
+        if len(chart_times) >= 8:
+            break
 
     if chart_temps:
         plt.figure(figsize=(12, 7), dpi=100)
