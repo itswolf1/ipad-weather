@@ -142,9 +142,10 @@ def update_weather():
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-    # 右下趨勢圖
+    # 右下趨勢圖 (24小時預報，每3小時一格)
     chart_times = []
     chart_temps = []
+    # 取前 8 筆資料，剛好涵蓋未來 24 小時
     for item in temp_list[:8]:
         dt_str = item.get('DataTime', item.get('StartTime'))
         if not dt_str: continue
@@ -167,13 +168,18 @@ def update_weather():
         plt.plot(x_smooth, y_smooth, color=COLOR_CHART_LINE, linewidth=3, zorder=2)
         plt.scatter(x_indices, chart_temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
         plt.fill_between(x_smooth, y_smooth, 5, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
-        plt.grid(axis='y', linestyle=':', alpha=0.5, color='#CCCCCC')
         
+        # 開啟 X 軸與 Y 軸的雙向格線，形成格子狀
+        plt.grid(axis='both', linestyle=':', alpha=0.5, color='#CCCCCC')
+        
+        # 固定 Y 軸為 5 到 40 度
         plt.ylim(5, 40)
         plt.yticks(np.arange(5, 45, 5), fontsize=24, color=COLOR_PRIMARY)
         plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
         
+        # 固定 X 軸的標籤與邊界
         plt.xticks(ticks=x_indices, labels=chart_times, fontsize=24, color=COLOR_PRIMARY)
+        plt.xlim(-0.5, len(chart_times) - 0.5)
         
         ax = plt.gca()
         for spine in ['top', 'right']: ax.spines[spine].set_visible(False)
