@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import make_interp_spline
 from matplotlib.ticker import FuncFormatter
-from matplotlib.font_manager import FontProperties
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 # 設定 API Keys
 CWA_API_KEY = os.environ.get("CWA_API_KEY")
@@ -147,7 +147,7 @@ def update_weather():
 
     # 4. 繪製區塊
     
-    # Header (當前天氣與圖示)
+    # Header 當前天氣與圖示
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
     draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
@@ -159,7 +159,7 @@ def update_weather():
             icon_img = icon_img.resize((300, 300))
             img.paste(icon_img, (500, 80), icon_img) 
 
-    # 五天預報 (含圖示)
+    # 五天預報 含圖示
     x_offset = 1000
     count = 0
     for d_str, temps in daily_data.items():
@@ -214,9 +214,8 @@ def update_weather():
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-# 右下趨勢圖 (27小時預報，每3小時一格)
-    
-    # 先建立一個字典，將時間與對應的天氣現象 (Wx) 關聯起來
+    # 右下趨勢圖 27小時預報
+    # 建立時間與天氣現象的對應字典
     wx_dict = {}
     for item in desc_list:
         dt_str = item.get('DataTime', item.get('StartTime'))
@@ -228,7 +227,7 @@ def update_weather():
 
     chart_times = []
     chart_temps = []
-    chart_wx = [] # 新增陣列存放簡化後的天氣文字
+    chart_icons = []
     last_dt = None
 
     for item in temp_list:
@@ -244,20 +243,25 @@ def update_weather():
                 chart_temps.append(float(temp_val))
                 chart_times.append(dt.strftime('%H:%M'))
                 
-                # 解析並簡化天氣現象字眼
+                # 判斷日夜與天氣代碼
                 wx_full = wx_dict.get(dt_str, "")
-                if "雨" in wx_full: wx_short = "雨"
-                elif "晴" in wx_full: wx_short = "晴"
-                elif "陰" in wx_full: wx_short = "陰"
-                elif "雲" in wx_full: wx_short = "雲"
-                else: wx_short = ""
-                chart_wx.append(wx_short)
+                is_day = 6 <= dt.hour < 18
+                suffix = 'd' if is_day else 'n'
                 
+                if "雷" in wx_full: i_code = "11" + suffix
+                elif "雨" in wx_full: i_code = "10" + suffix
+                elif "晴" in wx_full and "雲" in wx_full: i_code = "02" + suffix
+                elif "晴" in wx_full: i_code = "01" + suffix
+                elif "多雲" in wx_full: i_code = "03" + suffix
+                elif "陰" in wx_full or "雲" in wx_full: i_code = "04" + suffix
+                else: i_code = "02" + suffix
+                
+                chart_icons.append(i_code)
                 last_dt = dt
             except ValueError:
                 continue
                 
-        # 抓滿 9 筆 (共 27 小時) 即可停止
+        # 抓滿 9 筆 共 27 小時 即可停止
         if len(chart_times) >= 9:
             break
 
@@ -272,13 +276,6 @@ def update_weather():
         plt.scatter(x_indices, chart_temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
         plt.fill_between(x_smooth, y_smooth, 5, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
         
-        # 載入中文字體以供 matplotlib 使用
-        zhfont = FontProperties(fname=font_path, size=22)
-        
-        # 在每個資料點上方繪製天氣文字
-        for x, y, wx_text in zip(x_indices, chart_temps, chart_wx):
-            plt.text(x, y + 1.5, wx_text, fontproperties=zhfont, color=COLOR_PRIMARY, ha='center', va='bottom', zorder=4)
-        
         plt.grid(axis='both', linestyle=':', alpha=0.5, color='#CCCCCC')
         
         plt.ylim(5, 40)
@@ -289,6 +286,21 @@ def update_weather():
         plt.xlim(-0.5, len(chart_times) - 0.5)
         
         ax = plt.gca()
+        
+        # 繪製天氣圖示
+        for x, y, i_code in zip(x_indices, chart_temps, chart_icons):
+            pil_img = get_icon(i_code, size=2)
+            if pil_img:
+                arr_img = np.array(pil_img)
+                # 使用 zoom 縮放圖示比例
+                imagebox = OffsetImage(arr_img, zoom=0.5) 
+                ab = AnnotationBbox(imagebox, (x, y),
+                                    xybox=(0, 25), # 向上偏移避免蓋住資料點
+                                    xycoords='data',
+                                    boxcoords="offset points",
+                                    frameon=False)
+                ax.add_artist(ab)
+        
         for spine in ['top', 'right']: ax.spines[spine].set_visible(False)
         plt.tight_layout()
         buf = io.BytesIO()
@@ -297,7 +309,7 @@ def update_weather():
         chart_img = Image.open(buf).convert("RGBA")
         img.paste(chart_img, (700, 650), chart_img)
         plt.close()
-        
+
     # Footer
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
     draw.text((600, 1450), f"最後更新: {update_str} (CWA & OW)", fill=COLOR_SECONDARY, font=font_small)
