@@ -52,9 +52,7 @@ def update_weather():
     img = Image.new('RGB', (2048, 1536), color=COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    # ==========================================
     # 1. 抓取當前天氣與預報 (CWA 氣象署)
-    # ==========================================
     obs_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
     obs_params = {"Authorization": CWA_API_KEY, "StationId": "466920", "format": "JSON"}
     
@@ -77,40 +75,20 @@ def update_weather():
         print(f"CWA 資料抓取失敗: {e}")
         return
 
-    # ==========================================
     # 2. 抓取圖示與日出日落 (OpenWeather)
-    # ==========================================
-    ow_icons = {}
     cur_icon_code = None
-    sunrise, sunset = "--:--", "--:--"
+    sunrise, sunset = "00:00", "00:00"
     try:
-        # 當前天氣 (取日出落與當前圖示)
         ow_cur_url = f"http://api.openweathermap.org/data/2.5/weather?q={OW_CITY}&appid={OPENWEATHER_API_KEY}"
         ow_cur = requests.get(ow_cur_url).json()
         tz_offset = timedelta(seconds=ow_cur['timezone'])
         sunrise = (datetime.utcfromtimestamp(ow_cur['sys']['sunrise']) + tz_offset).strftime('%H:%M')
         sunset = (datetime.utcfromtimestamp(ow_cur['sys']['sunset']) + tz_offset).strftime('%H:%M')
         cur_icon_code = ow_cur['weather'][0]['icon']
-
-        # 預報天氣 (取未來五天圖示)
-        ow_fc_url = f"http://api.openweathermap.org/data/2.5/forecast?q={OW_CITY}&appid={OPENWEATHER_API_KEY}"
-        ow_fc = requests.get(ow_fc_url).json()
-        
-        for item in ow_fc['list']:
-            dt = datetime.utcfromtimestamp(item['dt']) + tz_offset
-            d_str = dt.strftime('%m/%d')
-            icon = item['weather'][0]['icon']
-            # 優先保留白天 ('d') 的圖示
-            if d_str not in ow_icons:
-                ow_icons[d_str] = icon
-            elif 'd' in icon and 'n' in ow_icons[d_str]: 
-                ow_icons[d_str] = icon
     except Exception as e:
         print(f"OpenWeather 資料抓取失敗: {e}")
 
-    # ==========================================
     # 3. 解析 CWA 預報資料
-    # ==========================================
     def find_weather_element(element_list, target_names):
         for e in element_list:
             if e.get('ElementName', e.get('elementName')) in target_names:
@@ -139,21 +117,9 @@ def update_weather():
     weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
     date_display = f"{local_time.strftime('%Y年%m月%d日')} {weekdays[int(local_time.strftime('%w'))]}"
 
-    daily_data = {}
-    for item in temp_list:
-        dt_str = item.get('DataTime', item.get('StartTime'))
-        if not dt_str: continue
-        d_str = datetime.fromisoformat(dt_str).strftime('%m/%d')
-        val_list = item.get('ElementValue', item.get('elementValue', []))
-        val = val_list[0].get('Temperature', val_list[0].get('value')) if val_list else None
-        if val is not None:
-            if d_str not in daily_data: daily_data[d_str] = []
-            daily_data[d_str].append(int(val))
-
-    # ==========================================
     # 4. 繪製區塊
-    # ==========================================
-    # --- Header (當前天氣與圖示) ---
+    
+    # Header 當前天氣與圖示
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
     draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
@@ -163,33 +129,9 @@ def update_weather():
         icon_img = get_icon(cur_icon_code, size=4)
         if icon_img:
             icon_img = icon_img.resize((300, 300))
-            img.paste(icon_img, (500, 80), icon_img) # 第三個參數是 Alpha 遮罩
+            img.paste(icon_img, (500, 80), icon_img) 
 
-    # --- 五天預報 (含圖示) ---
-    x_offset = 1000
-    count = 0
-    for d_str, temps in daily_data.items():
-        if count >= 5: break
-        if not temps: continue
-        
-        low = min(temps)
-        high = max(temps)
-        
-        draw.text((x_offset, 310), d_str, fill=COLOR_SECONDARY, font=font_medium)
-        
-        # 貼上 OpenWeather 預報圖示
-        f_icon_code = ow_icons.get(d_str)
-        if f_icon_code:
-            f_icon = get_icon(f_icon_code, size=2)
-            if f_icon:
-                f_icon = f_icon.resize((150, 150))
-                img.paste(f_icon, (x_offset - 20, 370), f_icon)
-                
-        draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
-        x_offset += 180
-        count += 1
-
-    # --- 左下詳細指標 ---
+    # 左下詳細指標
     details = [
         f"日出: {sunrise}", f"日落: {sunset}",
         f"風速: {wind} m/s", f"濕度: {humidity}%",
@@ -200,7 +142,7 @@ def update_weather():
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-    # --- 右下趨勢圖 ---
+    # 右下趨勢圖
     chart_times = []
     chart_temps = []
     for item in temp_list[:8]:
@@ -211,7 +153,7 @@ def update_weather():
         temp_val = val_list_temp[0].get('Temperature', val_list_temp[0].get('value', '0')) if val_list_temp else '0'
         try:
             chart_temps.append(float(temp_val))
-            chart_times.append(dt.strftime('%I%p').lstrip('0'))
+            chart_times.append(dt.strftime('%H:%M'))
         except ValueError:
             continue
 
@@ -224,12 +166,14 @@ def update_weather():
 
         plt.plot(x_smooth, y_smooth, color=COLOR_CHART_LINE, linewidth=3, zorder=2)
         plt.scatter(x_indices, chart_temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
-        plt.fill_between(x_smooth, y_smooth, min(y_smooth)-2, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
-        plt.grid(axis='y', linestyle='--', alpha=0.5, color='#CCCCCC')
+        plt.fill_between(x_smooth, y_smooth, 5, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
+        plt.grid(axis='y', linestyle=':', alpha=0.5, color='#CCCCCC')
+        
+        plt.ylim(5, 40)
+        plt.yticks(np.arange(5, 45, 5), fontsize=24, color=COLOR_PRIMARY)
+        plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
         
         plt.xticks(ticks=x_indices, labels=chart_times, fontsize=24, color=COLOR_PRIMARY)
-        plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{int(y)}°C"))
-        plt.yticks(fontsize=24, color=COLOR_PRIMARY)
         
         ax = plt.gca()
         for spine in ['top', 'right']: ax.spines[spine].set_visible(False)
@@ -241,7 +185,7 @@ def update_weather():
         img.paste(chart_img, (700, 650), chart_img)
         plt.close()
 
-    # --- Footer ---
+    # Footer
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
     draw.text((600, 1450), f"最後更新: {update_str} (CWA & OW)", fill=COLOR_SECONDARY, font=font_small)
 
