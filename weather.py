@@ -52,9 +52,7 @@ def update_weather():
     img = Image.new('RGB', (2048, 1536), color=COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    # ==========================================
     # 1. 抓取當前天氣與預報 (CWA 氣象署)
-    # ==========================================
     obs_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001"
     obs_params = {"Authorization": CWA_API_KEY, "StationId": "466920", "format": "JSON"}
     
@@ -77,9 +75,7 @@ def update_weather():
         print(f"CWA 資料抓取失敗: {e}")
         return
 
-    # ==========================================
     # 2. 抓取圖示與日出日落 (OpenWeather)
-    # ==========================================
     ow_icons = {}
     cur_icon_code = None
     sunrise, sunset = "00:00", "00:00"
@@ -107,9 +103,7 @@ def update_weather():
     except Exception as e:
         print(f"OpenWeather 資料抓取失敗: {e}")
 
-    # ==========================================
     # 3. 解析 CWA 預報資料
-    # ==========================================
     def find_weather_element(element_list, target_names):
         for e in element_list:
             if e.get('ElementName', e.get('elementName')) in target_names:
@@ -150,11 +144,9 @@ def update_weather():
             if d_str not in daily_data: daily_data[d_str] = []
             daily_data[d_str].append(int(val))
 
-    # ==========================================
     # 4. 繪製區塊
-    # ==========================================
     
-    # --- Header (當前天氣與圖示) ---
+    # Header (當前天氣與圖示)
     draw.text((100, 80), f"{temp}°C", fill=COLOR_PRIMARY, font=font_huge)
     draw.text((100, 350), f"濕度 {humidity}%  |  {current_desc}", fill=COLOR_PRIMARY, font=font_large)
     draw.text((1100, 80), f"{CITY_NAME} {DISTRICT_NAME}", fill=COLOR_PRIMARY, font=font_large)
@@ -166,7 +158,7 @@ def update_weather():
             icon_img = icon_img.resize((300, 300))
             img.paste(icon_img, (500, 80), icon_img) 
 
-    # --- 五天預報 (含圖示) ---
+    # 五天預報 (含圖示)
     x_offset = 1000
     count = 0
     for d_str, temps in daily_data.items():
@@ -190,18 +182,38 @@ def update_weather():
         x_offset += 180
         count += 1
 
-    # --- 左下詳細指標 ---
+    # 左下詳細指標
+    # 計算未來 24 小時內的最高與最低溫
+    temps_24h = []
+    for item in temp_list[:8]:
+        val_list = item.get('ElementValue', item.get('elementValue', []))
+        if val_list:
+            temp_val = val_list[0].get('Temperature', val_list[0].get('value'))
+            if temp_val is not None:
+                try:
+                    temps_24h.append(int(temp_val))
+                except ValueError:
+                    pass
+                    
+    max_t_24h = max(temps_24h) if temps_24h else temp
+    min_t_24h = min(temps_24h) if temps_24h else temp
+
     details = [
-        f"日出: {sunrise}", f"日落: {sunset}",
-        f"風速: {wind} m/s", f"濕度: {humidity}%",
-        f"氣壓: {pressure} hPa", f"降雨機率: {pop_value}%"
+        f"最高溫 (24h): {max_t_24h}°C", 
+        f"最低溫 (24h): {min_t_24h}°C",
+        f"日出: {sunrise}", 
+        f"日落: {sunset}",
+        f"風速: {wind} m/s", 
+        f"濕度: {humidity}%",
+        f"氣壓: {pressure} hPa", 
+        f"降雨機率: {pop_value}%"
     ]
     y_offset = 600
     for text in details:
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-    # --- 右下趨勢圖 (27小時預報，每3小時一格) ---
+    # 右下趨勢圖 (27小時預報，每3小時一格)
     chart_times = []
     chart_temps = []
     last_dt = None
@@ -256,7 +268,7 @@ def update_weather():
         img.paste(chart_img, (700, 650), chart_img)
         plt.close()
 
-    # --- Footer ---
+    # Footer
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
     draw.text((600, 1450), f"最後更新: {update_str} (CWA & OW)", fill=COLOR_SECONDARY, font=font_small)
 
