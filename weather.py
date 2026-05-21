@@ -156,7 +156,7 @@ def update_weather():
     if cur_icon_code:
         icon_img = get_icon(cur_icon_code, size=4)
         if icon_img:
-            icon_img = icon_img.resize((300, 300))
+            icon_img = icon_img.resize((400, 400))
             img.paste(icon_img, (500, 80), icon_img) 
 
     # 五天預報 含圖示
@@ -176,7 +176,7 @@ def update_weather():
         if f_icon_code:
             f_icon = get_icon(f_icon_code, size=2)
             if f_icon:
-                f_icon = f_icon.resize((150, 150))
+                f_icon = f_icon.resize((200, 200))
                 img.paste(f_icon, (x_offset - 20, 370), f_icon)
                 
         draw.text((x_offset, 530), f"{low}°|{high}°", fill=COLOR_PRIMARY, font=font_small)
@@ -293,7 +293,7 @@ def update_weather():
             if pil_img:
                 arr_img = np.array(pil_img)
                 # 使用 zoom 縮放圖示比例
-                imagebox = OffsetImage(arr_img, zoom=0.5) 
+                imagebox = OffsetImage(arr_img, zoom=0.7) 
                 ab = AnnotationBbox(imagebox, (x, y),
                                     xybox=(0, 25), # 向上偏移避免蓋住資料點
                                     xycoords='data',
