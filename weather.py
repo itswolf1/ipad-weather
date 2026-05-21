@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import make_interp_spline
 from matplotlib.ticker import FuncFormatter
+from matplotlib.font_manager import FontProperties
 
 # 設定 API Keys
 CWA_API_KEY = os.environ.get("CWA_API_KEY")
@@ -213,9 +214,21 @@ def update_weather():
         draw.text((100, y_offset), text, fill=COLOR_PRIMARY, font=font_medium)
         y_offset += 100
 
-    # 右下趨勢圖 (27小時預報，每3小時一格)
+# 右下趨勢圖 (27小時預報，每3小時一格)
+    
+    # 先建立一個字典，將時間與對應的天氣現象 (Wx) 關聯起來
+    wx_dict = {}
+    for item in desc_list:
+        dt_str = item.get('DataTime', item.get('StartTime'))
+        if not dt_str: continue
+        val_list = item.get('ElementValue', item.get('elementValue', []))
+        if val_list:
+            wx_val = val_list[0].get('Weather', val_list[0].get('value', ''))
+            wx_dict[dt_str] = wx_val
+
     chart_times = []
     chart_temps = []
+    chart_wx = [] # 新增陣列存放簡化後的天氣文字
     last_dt = None
 
     for item in temp_list:
@@ -230,6 +243,16 @@ def update_weather():
             try:
                 chart_temps.append(float(temp_val))
                 chart_times.append(dt.strftime('%H:%M'))
+                
+                # 解析並簡化天氣現象字眼
+                wx_full = wx_dict.get(dt_str, "")
+                if "雨" in wx_full: wx_short = "雨"
+                elif "晴" in wx_full: wx_short = "晴"
+                elif "陰" in wx_full: wx_short = "陰"
+                elif "雲" in wx_full: wx_short = "雲"
+                else: wx_short = ""
+                chart_wx.append(wx_short)
+                
                 last_dt = dt
             except ValueError:
                 continue
@@ -249,6 +272,13 @@ def update_weather():
         plt.scatter(x_indices, chart_temps, s=100, color='white', edgecolors=COLOR_CHART_LINE, linewidths=3, zorder=3)
         plt.fill_between(x_smooth, y_smooth, 5, color=COLOR_CHART_FILL, alpha=0.3, zorder=1)
         
+        # 載入中文字體以供 matplotlib 使用
+        zhfont = FontProperties(fname=font_path, size=22)
+        
+        # 在每個資料點上方繪製天氣文字
+        for x, y, wx_text in zip(x_indices, chart_temps, chart_wx):
+            plt.text(x, y + 1.5, wx_text, fontproperties=zhfont, color=COLOR_PRIMARY, ha='center', va='bottom', zorder=4)
+        
         plt.grid(axis='both', linestyle=':', alpha=0.5, color='#CCCCCC')
         
         plt.ylim(5, 40)
@@ -267,7 +297,7 @@ def update_weather():
         chart_img = Image.open(buf).convert("RGBA")
         img.paste(chart_img, (700, 650), chart_img)
         plt.close()
-
+        
     # Footer
     update_str = local_time.strftime('%Y/%m/%d %H:%M:%S')
     draw.text((600, 1450), f"最後更新: {update_str} (CWA & OW)", fill=COLOR_SECONDARY, font=font_small)
