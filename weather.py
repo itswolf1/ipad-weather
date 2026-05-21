@@ -163,8 +163,8 @@ def update_weather():
             except ValueError:
                 continue
                 
-        # 抓滿 8 筆 (共 24 小時) 即可停止
-        if len(chart_times) >= 8:
+        # 抓滿 9 筆 (共 27 小時) 即可停止
+        if len(chart_times) >= 9:
             break
 
     if chart_temps:
