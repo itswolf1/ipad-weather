@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 * * * *' # 每小時執行一次
+    - cron: '0 */3 * * *' # 每三小時執行一次
 
 jobs:
   build:
