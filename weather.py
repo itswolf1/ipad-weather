@@ -295,7 +295,7 @@ def update_weather():
                 # 使用 zoom 縮放圖示比例
                 imagebox = OffsetImage(arr_img, zoom=0.9) 
                 ab = AnnotationBbox(imagebox, (x, y),
-                                    xybox=(0, 25), # 向上偏移避免蓋住資料點
+                                    xybox=(0, 50), # 向上偏移避免蓋住資料點
                                     xycoords='data',
                                     boxcoords="offset points",
                                     frameon=False)
